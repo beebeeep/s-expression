@@ -298,25 +298,34 @@ impl<'a> Expression<'a> {
 /// 
 /// # Returns
 /// 
-/// A vector of string slices representing the tokens
-fn tokenize(src: &str) -> Vec<&str> {
+/// A vector of string slices representing the tokens, and the number of bytes read
+fn tokenize(src: &str) -> (Vec<&str>, usize) {
     // More realistic capacity estimate
     let mut tokens = Vec::with_capacity(src.len() / 2);
     let mut current = src;
-    
+    let mut read = 0;
+
     while !current.is_empty() {
         // Skip leading whitespace efficiently
-        current = current.trim_start();
-        if current.is_empty() { break; }
-        
+        current = if let Some(pos) = current.find(|c: char| !c.is_whitespace()) {
+            read += pos;
+            &current[pos..]
+        } else {
+            break;
+        };
+
         // Find next delimiter or whitespace
         let (token, rest) = match current.find(|c: char| c.is_whitespace() || "()'".contains(c)) {
             Some(pos) => {
                 let token = &current[..pos];
+                read += pos;
                 let rest = &current[pos..];
                 (token, rest)
             }
-            None => (current, ""),
+            None => {
+                read += current.len();
+                (current, "")
+            }
         };
         
         if !token.is_empty() {
@@ -329,13 +338,14 @@ fn tokenize(src: &str) -> Vec<&str> {
             if "()'".contains(delimiter) {
                 tokens.push(delimiter);
             }
+            read += 1;
             current = &rest[1..];
         } else {
             break;
         }
     }
     
-    tokens
+    (tokens, read)
 }
 
 /// Optimized zero-copy parser with proper error handling.
@@ -443,8 +453,9 @@ fn parse_atom(token: &str) -> Expression {
 /// 
 /// # Returns
 /// 
-/// A `Result` containing either the parsed expression or a parse error
 /// 
+/// A `Result` containing either the parsed expression along with the number of bytes read, or a
+/// parse error
 /// # Examples
 /// 
 /// ```rust
@@ -458,10 +469,10 @@ fn parse_atom(token: &str) -> Expression {
 /// let result = read("(unclosed");
 /// assert!(result.is_err());
 /// ```
-pub fn read(src: &str) -> Result<Expression, ParseError> {
-    let tokens = tokenize(src);
+pub fn read(src: &str) -> Result<(Expression, usize), ParseError> {
+    let (tokens, read) = tokenize(src);
     let mut token_slice = tokens.as_slice();
-    parse(&mut token_slice)
+    Ok((parse(&mut token_slice)?, read))
 }
 
 /// Convenience function for backward compatibility (panics on error).
@@ -476,8 +487,8 @@ pub fn read(src: &str) -> Result<Expression, ParseError> {
 /// 
 /// # Returns
 /// 
-/// The parsed expression
 /// 
+/// The parsed expression and the number of bytes read
 /// # Panics
 /// 
 /// Panics if the source cannot be parsed as a valid S-expression
@@ -490,7 +501,7 @@ pub fn read(src: &str) -> Result<Expression, ParseError> {
 /// let expr = read_unchecked("(hello world)");
 /// // Use expr safely knowing it was parsed successfully
 /// ```
-pub fn read_unchecked(src: &str) -> Expression {
+pub fn read_unchecked(src: &str) -> (Expression, usize) {
     read(src).expect("Failed to parse S-expression")
 }
 
@@ -500,8 +511,14 @@ mod tests {
 
     #[test]
     fn tokenize_test() {
-        assert_eq!(tokenize("this is a test"), vec!["this", "is", "a", "test"]);
-        assert_eq!(tokenize("(hello world)"), vec!["(", "hello", "world", ")"]);
+        assert_eq!(
+            tokenize("this is a test"),
+            (vec!["this", "is", "a", "test"], 14)
+        );
+        assert_eq!(
+            tokenize("(hello world)"),
+            (vec!["(", "hello", "world", ")"], 13)
+        );
     }
 
     #[test]
@@ -518,15 +535,15 @@ mod tests {
     fn fast_path_tests() {
         // Test single character symbols
         let result = read("a").unwrap();
-        assert!(matches!(result, Expression::Symbol("a")));
         
+        assert!(matches!(result, (Expression::Symbol("a"), 1)));
         // Test number parsing
         let result = read("42").unwrap();
-        assert!(matches!(result, Expression::Number(42.0)));
         
+        assert!(matches!(result, (Expression::Number(42.0), 2)));
         // Test negative numbers
         let result = read("-3.14").unwrap();
-        assert!(matches!(result, Expression::Number(-3.14)));
+        assert!(matches!(result, (Expression::Number(-3.14), 5)));
     }
     
     #[test]
