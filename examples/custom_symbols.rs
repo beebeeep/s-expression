@@ -145,7 +145,7 @@ fn main() {
     // Example 6: Parsing and converting
     println!("\n6. Parsing and Converting:");
     match read("(std::vector 1 2 3)") {
-        Ok(borrowed) => {
+        Ok((borrowed, _)) => {
             let owned: OwnedExpression<NamespacedSymbol> = borrowed.to_owned();
             println!("   Parsed: {}", owned);
         }

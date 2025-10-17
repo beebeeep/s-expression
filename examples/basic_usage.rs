@@ -31,9 +31,10 @@ fn main() {
     println!("1. Zero-copy parsing (original API):");
     let source = "(define (factorial n) (if (= n 0) 1 (* n (factorial (- n 1)))))";
     match read(source) {
-        Ok(expr) => {
+        Ok((expr, read)) => {
             println!("   Parsed: {:?}", expr);
             println!("   Display: {}", expr);
+            println!("   Read: {} bytes", read);
         }
         Err(e) => eprintln!("   Parse error: {}", e),
     }
@@ -64,7 +65,7 @@ fn main() {
     // Example 5: Parsing and converting with custom symbols
     println!("\n5. Parsing and converting with custom symbols:");
     match read("(define x 42)") {
-        Ok(borrowed) => {
+        Ok((borrowed, _)) => {
             let owned: OwnedExpression<SimpleSymbol> = borrowed.to_owned();
             println!("   Parsed and converted: {}", owned);
         }
